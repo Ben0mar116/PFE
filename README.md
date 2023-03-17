@@ -9,6 +9,3 @@ mediapipe :  pip install mediapipe
 PIL :  pip install PIL
 numpy :  pip install numpy
 ....
-inspired by : 
-
-https://github.com/Kazuhito00/hand-gesture-recognition-using-mediapipe
