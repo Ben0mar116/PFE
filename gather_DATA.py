@@ -3,8 +3,8 @@ import csv
 import os
 import numpy as np
 import mediapipe as mp
+from HandModule import handTracker , cv2, pre_process_landmark
 
-from HAND import handTracker , pre_process_landmark
 
 
 def takePic(max_iteration ):

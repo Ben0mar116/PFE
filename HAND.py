@@ -1,100 +1,23 @@
-import cv2
+from HandModule import handTracker , cv2, pre_process_landmark
 import keras
 import tensorflow as tf 
-import copy
-import itertools
-import mediapipe as mp
+import textwrap
 import time
 from PIL import ImageFont, ImageDraw, Image
 import numpy as np
+
+
 model = keras.models.load_model('saved_model/')
 
 
-class handTracker():
-    def __init__(self, mode=False, maxHands=1, detectionCon=0.5,modelComplexity=1,trackCon=0.5):
-        self.mode = mode
-        self.maxHands = maxHands
-        self.detectionCon = detectionCon
-        self.modelComplex = modelComplexity
-        self.trackCon = trackCon
-        self.mpHands = mp.solutions.hands
-        self.hands = self.mpHands.Hands(self.mode, self.maxHands,self.modelComplex,
-                                        self.detectionCon, self.trackCon)
-        self.mpDraw = mp.solutions.drawing_utils
+def font_ar(number = 65):
+    return ImageFont.truetype("Uthmaniac.otf", number)
 
 
-    def handFinder(self ,img , draw = True):
-        imageRGB = cv2.cvtColor(img, cv2.COLOR_BGR2RGB) #prepare image
-        self.results = self.hands.process(imageRGB) # get hand landmarks
-        if self.results.multi_hand_landmarks: 
-                for handLms in self.results.multi_hand_landmarks:
 
-                    if draw:
-                        # draw hand landmarks
-                        self.mpDraw.draw_landmarks(img, handLms ,self.mpHands.HAND_CONNECTIONS) # identifiy hands  21
-        return img
-
-    def positionFinder(self , img):
-        lmlistH1 = []
+def print_time( threadName, delay , model):
+   time.sleep(delay)
       
-        if self.results.multi_hand_landmarks:
-            for handNO , hand_lms in enumerate(self.results.multi_hand_landmarks):
-                for id, lm in enumerate(hand_lms.landmark):
-                    h, w ,c= img.shape    # height width and c is channel 
-                    #c will always = 3 because it represents RGB values of a pixel // the shape of an image is 3 dimentionnal tensor (height , width , c== 3 ) 
-                    cx, cy = int(lm.x * w), int(lm.y * h) 
-                    lmlistH1.append([cx,cy])
-                    
-                return lmlistH1
-        return lmlistH1
-                
-                
-
-        
-
-                   
-
-
-
-def pre_process_landmark(landmark_list):
-        # Normalization
-
-    temp_landmark_list = copy.deepcopy(landmark_list)
-    
-
-    # Convert to relative coordinates
-    # take id== 0  as origin 
-    base_x, base_y = 0, 0
-    for id, landmark_point in enumerate(temp_landmark_list):
-        if id == 0:
-            base_x, base_y = landmark_point[0], landmark_point[1]
-            # subtract x,y of set id to x,y of origin respectivaly
-        temp_landmark_list[id][0] = temp_landmark_list[id][0] - base_x
-        temp_landmark_list[id][1] = temp_landmark_list[id][1] - base_y
-
-    # Convert to a one-dimensional list -> x , y respective to the id of hand_landmarks
-    temp_landmark_list = list(itertools.chain.from_iterable(temp_landmark_list))
-    # Normalization
-    Lisrt = list(map(abs, temp_landmark_list))
-    if Lisrt :
-        max_value =  max(Lisrt)
-
-
-        def normalize_(n): 
-            return n / max_value
-# to make the values in the end  between -1 and 1 
-# why ? -> without preprocessing , there are some dirty data that are >> than 1  which is unfit to train a classification  model 
-        temp_landmark_list = list(map(normalize_, temp_landmark_list))
-
-    return temp_landmark_list
-
-
-
-
-
-                
-
-
 
 
 def main():
@@ -103,22 +26,31 @@ def main():
     cTime = 0 
     pastTime = 0
     cap = cv2.VideoCapture(0)
-    image_letter = np.zeros((480, 640, 3), np.uint8)
+    tracker = handTracker()
+
+    image_letter = np.zeros((640, 480, 3), np.uint8)
     image_letter = cv2.cvtColor(image_letter, cv2.COLOR_BGR2RGB)
     pil_image = Image.fromarray(image_letter)
-    font = ImageFont.truetype("arial.ttf", 35)
     draw = ImageDraw.Draw(pil_image)
 
 
     cv2.namedWindow('Letter', cv2.WINDOW_NORMAL)
     cv2.resizeWindow('Letter', 640, 480)
     cv2.rectangle(img=image_letter, pt1=(0, 0), pt2=(640, 480), color=(0, 0, 0), thickness=-1)
-    
+    text = ""
+    text_color = "#FFFFFF"
+    mode_color = (0,255,255) 
 
-    tracker = handTracker()
     while cap.isOpened():
-        success, image = cap.read()
+        Write = False
+        # cal FPS
+        cTime = time.time()
+        fps = 1/(cTime - pastTime)
+        pastTime = cTime
 
+        k = cv2.waitKey(1)
+        success, image = cap.read()
+        
         imageRGB = cv2.cvtColor(image, cv2.COLOR_BGR2RGB)
         results = tracker.hands.process(imageRGB)
         # print(results.multi_hand_landmarks)
@@ -126,22 +58,53 @@ def main():
         lmList = tracker.positionFinder(image)
         post_proccess = pre_process_landmark(lmList)
 
+        draw.text((30, 450), "[space] : write.",  font = ImageFont.FreeTypeFont('arial.ttf' , 30) , fill = mode_color, stroke_width=0 )
+
+        draw.text((260, 450), "[r] : reset.",  font = ImageFont.FreeTypeFont('arial.ttf' , 30) , fill = mode_color, stroke_width=0 )
+        
+        if k%256  == 114:
+            # r pressed  
+                mode_color = (0,0,0) # mode disapears
+                draw.rectangle((0, 0, 640, 600), fill=(0, 0, 0, 0))
+                Write = False
+                text =""
         if len(post_proccess) == 42 :
             predict_result = model.predict(np.array([post_proccess]))
-            draw.rectangle((30, 30, 300, 150), fill=(0, 0, 0, 0))
-            draw.text((30, 30), ALPHABET[int(np.argmax(np.squeeze(predict_result)))], font=font)
+            draw.rectangle((0, 0, 300, 300), fill=(0, 0, 0, 0))
+            draw.text((30, 30),   ALPHABET[int(np.argmax(np.squeeze(predict_result)))], font=font_ar() , fill = text_color)
 
 
+            if k%256  == 9 and text.strip() != "":
+                # TAB pressed  
+                draw.rectangle((0, 0, 640, 600), fill=(0, 0, 0, 0))
+                text+=" "
+                draw.text ( (30,350), text, font=font_ar(65), fill=(255,255,255),spacing=5,direction='rtl',align='left',features='rtla')
+            
 
+                
+            
+            if k%256  == 8:
+            # BACKSPACE pressed  
+                draw.rectangle((0, 0, 640, 600), fill=(0, 0, 0, 0))
+                text = text[0:len(text)-1]
+                draw.text ( (30,350), text, font=font_ar(65), fill=(255,255,255),spacing=5,direction='rtl',align='left',features='rtla')
+            
+            if k%256  == 32:
+            # SPACE pressed 
+                mode_color = (0,0,0) # mode disapears
+                Write = True
 
-        # print(tracker.positionFinder2(image))
- #print  x, y position of a point /id 
+            if Write :
+                # take moment shot of the alphabet value then compare it 3 sec later // if it fits -> write down
+                draw.rectangle((0, 0, 600, 600), fill=(0, 0, 0, 0))
+                xt1 =  int(np.argmax(np.squeeze(predict_result)))
+                #  now capture letter in 3 seconds
+                text +=ALPHABET[xt1]
+                draw.text ( (30,350), text, font=font_ar(65), fill=(255,255,255),spacing=5,direction='rtl',align='left',features='rtla')
         
-        cTime = time.time()
-        fps = 1/(cTime - pastTime)
-        pastTime = cTime
+       
 
-        cv2.putText( image ,str(int(fps)) ,(20,30) , cv2.FONT_HERSHEY_PLAIN ,  2 ,(255 ,255 ,255) ,2 )
+        cv2.putText( image ,str(int(fps)) ,(20,30) , cv2.FONT_HERSHEY_PLAIN ,  2 ,(0 ,0 ,0) ,2 )
 
 
         cv2.imshow("Camera_Capture", image)
@@ -153,7 +116,7 @@ def main():
         cv2.moveWindow("Letter" , 340, 220)
         
 
-        if cv2.waitKey(1)%256 == 27:
+        if k%256 == 27:
             # ESC pressed
             print("END...")
             break
@@ -162,9 +125,8 @@ def main():
     cv2.destroyAllWindows()
 
 
-
-
-main()
+if __name__ == "__main__":
+    main()
 
 
 
